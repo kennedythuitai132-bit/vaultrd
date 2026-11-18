@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Catalogue — VaultRD</title>
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head><body>
+<script src="/assets/app.js"></script>
+<script>
+(async function() {
+  const user = await requireAuth();
+  if (!user) return;
+  const mainArea = mountShell(user);
+  const content = UI.el("div", { class: "page-content" });
+  mainArea.appendChild(content);
+
+  content.appendChild(UI.el("div", { class: "page-hero" },
+    UI.el("h1", null, "Research Catalogue"),
+    UI.el("p", null, "Browse and discover research across all departments")
+  ));
+
+  const msg = UI.el("div", { id: "msg" });
+  content.appendChild(msg);
+
+  const searchPanel = UI.el("div", { class: "panel", style: "margin-bottom:20px;display:flex;gap:12px" });
+  searchPanel.innerHTML = `
+    <div style="flex:1;position:relative">
+      <i data-lucide="search" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:#94a3b8"></i>
+      <input id="searchInput" placeholder="Search by title, project code, or filename..." style="width:100%;padding:11px 12px 11px 40px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;font-size:.92rem">
+    </div>
+  `;
+  content.appendChild(searchPanel);
+
+  const grid = UI.el("div", { id: "catalogueGrid", style: "display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px" });
+  content.appendChild(grid);
+
+  let allFiles = [];
+
+  function renderGrid(files) {
+    grid.innerHTML = "";
+    if (!files.length) {
+      grid.innerHTML = "<div style='grid-column:1/-1;text-align:center;color:#94a3b8;padding:40px'>No files found matching your search.</div>";
+      return;
+    }
+    for (const f of files) {
+      const card = UI.el("div", { style: "background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:20px;transition:transform .15s,box-shadow .15s;display:flex;flex-direction:column" },
+        UI.el("div", { style: "display:flex;align-items:center;gap:12px;margin-bottom:14px" },
+          UI.el("div", { style: "width:40px;height:40px;background:#dbeafe;color:#1e40af;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0" }, UI.el("i", { "data-lucide": "file-text", style: "width:20px;height:20px" })),
+          UI.el("div", { style: "flex:1;overflow:hidden" },
+            UI.el("div", { style: "font-weight:600;font-size:.95rem;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis", title: f.title }, f.title),
+            UI.el("div", { style: "font-size:.75rem;color:#64748b" }, f.project_code || "No Project Code")
+          )
+        ),
+        UI.el("div", { style: "font-size:.8rem;color:#64748b;margin-bottom:16px;display:flex;justify-content:space-between;margin-top:auto" },
+          UI.el("span", null, UI.fmtBytes(f.size_bytes)),
+          UI.el("span", null, UI.fmtDate(f.created_at))
+        ),
+        UI.el("button", { class: "btn", style: "width:100%", onclick: async () => {
+          try {
+            const t = await API.get("/files/" + f.id + "/download-token");
+            const link = document.createElement("a");
+            link.href = "/api/files/" + f.id + "/download?token=" + encodeURIComponent(t.token);
+            link.download = f.filename;
+            link.click();
+          } catch (e) { UI.showError(msg, e.message); }
+        }}, UI.el("i", { "data-lucide": "download", style: "width:16px;height:16px;margin-right:6px" }), "Download File")
+      );
+      card.onmouseover = () => { card.style.transform = "translateY(-2px)"; card.style.boxShadow = "0 4px 12px rgba(15,23,42,.06)"; };
+      card.onmouseout = () => { card.style.transform = "none"; card.style.boxShadow = "none"; };
+      grid.appendChild(card);
+    }
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  // Live Search
+  document.getElementById("searchInput").addEventListener("input", (e) => {
+    const q = e.target.value.toLowerCase();
+    const filtered = allFiles.filter(f => 
+      f.title.toLowerCase().includes(q) || 
+      (f.project_code || "").toLowerCase().includes(q) || 
+      f.filename.toLowerCase().includes(q)
+    );
+    renderGrid(filtered);
+  });
+
+  try {
+    const r = await API.get("/files");
+    allFiles = r.files || [];
+    renderGrid(allFiles);
+  } catch (e) { UI.showError(msg, e.message); }
+})();
+</script></body></html>

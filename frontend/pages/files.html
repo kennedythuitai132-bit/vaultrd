@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Research Files — VaultRD</title>
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head><body>
+<script src="/assets/app.js"></script>
+<script>
+(async function() {
+  const user = await requireAuth();
+  if (!user) return;
+  const mainArea = mountShell(user);
+  const content = UI.el("div", { class: "page-content" });
+  mainArea.appendChild(content);
+
+  content.appendChild(UI.el("div", { class: "page-hero" },
+    UI.el("h1", null, "Research Files"),
+    UI.el("p", null, "Files are encrypted with AES-256-GCM before storage")
+  ));
+
+  const msg = UI.el("div", { id: "msg" });
+  content.appendChild(msg);
+
+  if (user.role !== "viewer") {
+    const upPanel = UI.el("div", { class: "panel", style: "margin-bottom:20px" });
+    upPanel.appendChild(UI.el("div", { class: "panel-head" }, UI.el("h3", null, "Upload a file")));
+    const form = UI.el("form", { id: "uploadForm", style: "display:grid;grid-template-columns:1fr 1fr;gap:12px" });
+    form.innerHTML = `
+      <div style="grid-column:1/-1"><label>File</label><input id="file" type="file" required></div>
+      <div><label>Title</label><input id="title" required maxlength="200"></div>
+      <div><label>Project code</label><input id="project_code" maxlength="50"></div>
+      <div style="grid-column:1/-1"><label>Description (optional)</label><textarea id="description" rows="2"></textarea></div>
+      <div style="grid-column:1/-1"><button type="submit" class="btn" id="upBtn">Upload & encrypt</button></div>
+    `;
+    upPanel.appendChild(form);
+    content.appendChild(upPanel);
+  }
+
+  const listPanel = UI.el("div", { class: "panel" });
+  listPanel.appendChild(UI.el("div", { class: "panel-head" },
+    UI.el("h3", null, "Your files"),
+    UI.el("span", { id: "fileCount", style: "font-size:.8rem;color:#64748b" }, "0 files")
+  ));
+  const tbody = UI.el("tbody", { id: "fileBody" });
+  listPanel.appendChild(UI.el("table", null,
+    UI.el("thead", null, UI.el("tr", null,
+      UI.el("th", null, "Title"), UI.el("th", null, "Project"),
+      UI.el("th", null, "Filename"), UI.el("th", null, "Size"),
+      UI.el("th", null, "Uploaded"), UI.el("th", null, "Actions")
+    )),
+    tbody
+  ));
+  content.appendChild(listPanel);
+
+  async function load() {
+    try {
+      const r = await API.get("/files");
+      tbody.innerHTML = "";
+      document.getElementById("fileCount").textContent = r.files.length + " files";
+      if (!r.files.length) {
+        tbody.appendChild(UI.el("tr", null, UI.el("td", { colspan: 6, style: "text-align:center;color:#94a3b8;padding:32px" }, "No files yet. Upload your first research document above.")));
+        return;
+      }
+      for (const f of r.files) {
+        const actions = UI.el("td");
+        const dl = UI.el("button", { class: "btn btn-sm", style: "margin-right:6px" }, "Download");
+        dl.onclick = async () => {
+          try {
+            const t = await API.get("/files/" + f.id + "/download-token");
+            const link = document.createElement("a");
+            link.href = "/api/files/" + f.id + "/download?token=" + encodeURIComponent(t.token);
+            link.download = f.filename;
+            link.click();
+          } catch (e) { msg.innerHTML = '<div class="alert-box error">' + e.message + '</div>'; }
+        };
+        actions.appendChild(dl);
+
+        const cmt = UI.el("button", { class: "btn btn-sm btn-muted", style: "margin-right:6px" }, "Comments");
+        cmt.onclick = () => window.openComments(f.id, f.title);
+        actions.appendChild(cmt);
+
+        if (user.role === "admin" || f.owner_id === user.id) {
+          const del = UI.el("button", { class: "btn btn-sm btn-danger" }, "Delete");
+          del.onclick = async () => {
+            if (!confirm("Delete \"" + f.title + "\"?")) return;
+            try { await API.del("/files/" + f.id); load(); } catch (e) { msg.innerHTML = '<div class="alert-box error">' + e.message + '</div>'; }
+          };
+          actions.appendChild(del);
+        }
+
+        tbody.appendChild(UI.el("tr", null,
+          UI.el("td", null, f.title),
+          UI.el("td", null, f.project_code || "—"),
+          UI.el("td", null, f.filename),
+          UI.el("td", null, UI.fmtBytes(f.size_bytes)),
+          UI.el("td", null, UI.fmtDate(f.created_at)),
+          actions
+        ));
+      }
+    } catch (e) { msg.innerHTML = '<div class="alert-box error">' + e.message + '</div>'; }
+  }
+
+  const upForm = document.getElementById("uploadForm");
+  if (upForm) {
+    upForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      msg.innerHTML = "";
+      const btn = document.getElementById("upBtn"); btn.disabled = true;
+      const fd = new FormData();
+      fd.append("file", document.getElementById("file").files[0]);
+      fd.append("title", document.getElementById("title").value.trim());
+      fd.append("project_code", document.getElementById("project_code").value.trim());
+      fd.append("description", document.getElementById("description").value.trim());
+      try {
+        await API.postForm("/files", fd);
+        UI.showSuccess(msg, "File uploaded and encrypted");
+        e.target.reset();
+        load();
+      } catch (err) { UI.showError(msg, err.message); }
+      finally { btn.disabled = false; }
+    });
+  }
+
+  load();
+  if (window.lucide) window.lucide.createIcons();
+})();
+</script>
+
+<div id="commentsDrawer" style="position:fixed;top:0;right:-420px;width:420px;height:100vh;background:#fff;box-shadow:-4px 0 20px rgba(15,23,42,.1);z-index:100;transition:right .25s;display:flex;flex-direction:column">
+  <div style="padding:20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
+    <div>
+      <div style="font-weight:600;color:#0f172a" id="commentsTitle">Comments</div>
+      <div style="font-size:.8rem;color:#64748b" id="commentsSub"></div>
+    </div>
+    <button onclick="document.getElementById('commentsDrawer').style.right='-420px'" style="background:transparent;border:none;cursor:pointer;color:#64748b;font-size:1.4rem">&times;</button>
+  </div>
+  <div id="commentsList" style="flex:1;overflow-y:auto;padding:20px"></div>
+  <div style="padding:16px;border-top:1px solid #e2e8f0">
+    <textarea id="newComment" rows="2" placeholder="Add a comment..." style="width:100%;padding:10px;border:1px solid #e2e8f0;border-radius:10px;font-family:inherit;resize:none"></textarea>
+    <button id="postComment" class="btn" style="margin-top:8px;width:100%">Post comment</button>
+  </div>
+</div>
+<script>
+window.openComments = async function(fileId, fileName) {
+  document.getElementById("commentsDrawer").style.right = "0";
+  document.getElementById("commentsSub").textContent = fileName;
+  document.getElementById("commentsList").innerHTML = "Loading...";
+  document.getElementById("newComment").value = "";
+  document.getElementById("postComment").onclick = async () => {
+    const body = document.getElementById("newComment").value.trim();
+    if (!body) return;
+    try { await API.post("/comments/" + fileId, { body }); document.getElementById("newComment").value = ""; window.loadComments(fileId); } catch(e) { alert(e.message); }
+  };
+  window.loadComments(fileId);
+};
+window.loadComments = async function(fileId) {
+  try {
+    const r = await API.get("/comments/" + fileId);
+    const host = document.getElementById("commentsList");
+    host.innerHTML = "";
+    if (!r.comments || !r.comments.length) {
+      host.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:40px 20px;font-size:.85rem">No comments yet. Be the first.</div>';
+      return;
+    }
+    for (const c of r.comments) {
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "margin-bottom:16px;padding:12px;background:#f8fafc;border-radius:10px";
+      wrap.innerHTML = '<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><div style="width:24px;height:24px;border-radius:50%;background:#1e88e5;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.75rem">' + (c.username || "?").charAt(0).toUpperCase() + '</div><div style="font-weight:600;font-size:.85rem;color:#0f172a">' + (c.full_name || c.username) + '</div><div style="font-size:.72rem;color:#94a3b8;margin-left:auto">' + new Date(c.created_at).toLocaleString() + '</div></div><div style="font-size:.85rem;color:#475569;line-height:1.5;white-space:pre-wrap">' + c.body.replace(/</g,"&lt;") + '</div>';
+      host.appendChild(wrap);
+    }
+  } catch (e) {
+    document.getElementById("commentsList").innerHTML = '<div style="color:#dc2626;padding:20px">' + e.message + '</div>';
+  }
+};
+</script>
+</body></html>

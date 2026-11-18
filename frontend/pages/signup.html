@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Create account — VaultRD</title>
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head><body>
+<div class="split-auth">
+  <div class="brand-panel">
+    <div class="brand-shield"><i data-lucide="shield-check"></i></div>
+    <h1 class="brand-title">VaultRD</h1>
+    <p class="brand-subtitle">Research Vault</p>
+    <p class="brand-tagline"><strong>Build. Store. Share.</strong><br>Advance Research Together.</p>
+    <div class="brand-features">
+      <div class="bf-item"><i data-lucide="lock"></i> AES-256-GCM encryption at rest</div>
+      <div class="bf-item"><i data-lucide="shield-check"></i> Multi-factor authentication</div>
+      <div class="bf-item"><i data-lucide="users"></i> Role-based access control</div>
+      <div class="bf-item"><i data-lucide="scroll-text"></i> Full audit trails</div>
+    </div>
+  </div>
+  <div class="form-panel"><div class="form-inner">
+    <h2>Create Account</h2>
+    <p class="form-sub">Join the research community</p>
+    <div id="msg"></div>
+    <form id="signupForm">
+      <div class="form-group"><label>Full name</label>
+        <div class="input-icon-wrap"><i data-lucide="user"></i>
+          <input id="full_name" placeholder="Dr. Jane Doe" required></div></div>
+      <div class="form-group"><label>Institutional email</label>
+        <div class="input-icon-wrap"><i data-lucide="mail"></i>
+          <input id="email" type="email" placeholder="you@university.edu" required></div></div>
+      <div class="form-group"><label>Username</label>
+        <div class="input-icon-wrap"><i data-lucide="at-sign"></i>
+          <input id="username" placeholder="jane.doe" minlength="3" maxlength="50" required></div></div>
+      <div class="form-group"><label>Password</label>
+        <div class="input-icon-wrap"><i data-lucide="lock"></i>
+          <input id="password" type="password" placeholder="At least 8 characters" minlength="8" required></div></div>
+      <div class="form-group"><label>Confirm password</label>
+        <div class="input-icon-wrap"><i data-lucide="lock"></i>
+          <input id="password2" type="password" placeholder="Re-enter password" required></div></div>
+      <div class="form-group"><label>I am a...</label>
+        <select id="role">
+          <option value="researcher">Researcher — upload & manage data</option>
+          <option value="viewer">Viewer — read-only access</option>
+        </select>
+      </div>
+      <div class="form-row"><label><input type="checkbox" id="terms" required> I agree to the Terms & Privacy Policy</label></div>
+      <button type="submit" class="btn-primary-lg" id="submitBtn">Create Account</button>
+    </form>
+    <div class="form-footer">Already have an account? <a href="/pages/login.html">Sign in</a></div>
+  </div></div>
+</div>
+<script src="/assets/app.js"></script>
+<script>
+if (window.lucide) window.lucide.createIcons();
+document.getElementById("signupForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById("msg"); msg.innerHTML = "";
+  const full_name = document.getElementById("full_name").value.trim();
+  const email = document.getElementById("email").value.trim();
+  const username = document.getElementById("username").value.trim();
+  const password = document.getElementById("password").value;
+  const password2 = document.getElementById("password2").value;
+  const role = document.getElementById("role").value;
+  const terms = document.getElementById("terms").checked;
+  if (password !== password2) { msg.innerHTML = '<div class="alert-box error">Passwords do not match</div>'; return; }
+  if (!terms) { msg.innerHTML = '<div class="alert-box error">Please accept the terms</div>'; return; }
+  const btn = document.getElementById("submitBtn"); btn.disabled = true;
+  try {
+    await API.post("/auth/signup", { username, email, full_name, password, role });
+    msg.innerHTML = '<div class="alert-box success">Account created! An administrator must approve your account before you can sign in.</div>';
+    document.getElementById("signupForm").reset();
+  } catch (err) {
+    msg.innerHTML = '<div class="alert-box error">' + (err.message || "Signup failed") + '</div>';
+  } finally { btn.disabled = false; }
+});
+</script></body></html>

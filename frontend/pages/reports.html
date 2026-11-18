@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reports — VaultRD</title>
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head><body>
+<script src="/assets/app.js"></script>
+<script>
+(async function() {
+  const user = await requireAdmin();
+  if (!user) return;
+  const mainArea = mountShell(user);
+  const content = UI.el("div", { class: "page-content" });
+  mainArea.appendChild(content);
+
+  content.appendChild(UI.el("div", { class: "page-hero" },
+    UI.el("h1", null, "Reports"),
+    UI.el("p", null, "System-wide metrics and compliance summary")
+  ));
+
+  const msg = UI.el("div", { id: "msg" });
+  content.appendChild(msg);
+
+  const kpiGrid = UI.el("div", { class: "kpi-grid" });
+  function kpi(icon, tone, label, id) {
+    return UI.el("div", { class: "kpi" },
+      UI.el("div", { class: "kpi-icon " + tone }, UI.el("i", { "data-lucide": icon })),
+      UI.el("div", { class: "kpi-body" },
+        UI.el("div", { class: "kpi-label" }, label),
+        UI.el("div", { class: "kpi-value", id }, "0")
+      )
+    );
+  }
+  kpiGrid.appendChild(kpi("users", "blue", "Total users", "rUsers"));
+  kpiGrid.appendChild(kpi("folder-lock", "green", "Total files", "rFiles"));
+  kpiGrid.appendChild(kpi("shield-alert", "amber", "Open alerts", "rAlerts"));
+  kpiGrid.appendChild(kpi("activity", "purple", "Log entries", "rLogs"));
+  content.appendChild(kpiGrid);
+  UI.el("div", { style: "margin-top:20px" },
+    UI.el("button", { class: "btn", onclick: () => {
+      let csv = "Metric,Value\n";
+      csv += \`"Total Users","${document.getElementById('rUsers').textContent}"\n\`;
+      csv += \`"Total Files","${document.getElementById('rFiles').textContent}"\n\`;
+      csv += \`"Open Alerts","${document.getElementById('rAlerts').textContent}"\n\`;
+      csv += \`"Log Entries","${document.getElementById('rLogs').textContent}"\n\`;
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = "summary_report.csv"; a.click();
+    }}, UI.el("i", { "data-lucide": "download", style: "width:16px;height:16px;margin-right:8px" }), "Download CSV Report")
+  );
+
+  try {
+    const r = await API.get("/reports/summary");
+    const s = r.summary;
+    document.getElementById("rUsers").textContent = s.users_total || 0;
+    document.getElementById("rFiles").textContent = s.files_total || 0;
+    document.getElementById("rAlerts").textContent = s.alerts_open || 0;
+    document.getElementById("rLogs").textContent = s.audit_count || 0;
+  } catch (e) { UI.showError(msg, e.message); }
+
+  if (window.lucide) window.lucide.createIcons();
+})();
+</script></body></html>

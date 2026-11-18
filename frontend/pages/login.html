@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in — VaultRD</title>
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head><body>
+<div class="split-auth">
+  <div class="brand-panel">
+    <div class="brand-shield"><i data-lucide="shield-check"></i></div>
+    <h1 class="brand-title">VaultRD</h1>
+    <p class="brand-subtitle">Research Vault</p>
+    <p class="brand-tagline"><strong>Secure.</strong> <strong>Organise.</strong> <strong>Collaborate.</strong><br>Your research, safely stored.</p>
+    <div class="brand-features">
+      <div class="bf-item"><i data-lucide="lock"></i> AES-256-GCM encryption at rest</div>
+      <div class="bf-item"><i data-lucide="shield-check"></i> Multi-factor authentication</div>
+      <div class="bf-item"><i data-lucide="users"></i> Role-based access control</div>
+      <div class="bf-item"><i data-lucide="scroll-text"></i> Full audit trails</div>
+    </div>
+  </div>
+  <div class="form-panel"><div class="form-inner">
+    <h2>Welcome Back</h2>
+    <p class="form-sub">Sign in to your account</p>
+    <div id="msg"></div>
+    <form id="loginForm">
+      <div class="form-group"><label>Username</label>
+        <div class="input-icon-wrap"><i data-lucide="user"></i>
+          <input id="username" autocomplete="username" placeholder="Enter your username" required></div></div>
+      <div class="form-group"><label>Password</label>
+        <div class="input-icon-wrap"><i data-lucide="lock"></i>
+          <input id="password" type="password" autocomplete="current-password" placeholder="Enter your password" required></div></div>
+      <div class="form-row">
+        <label><input type="checkbox" id="remember"> Remember me</label>
+        <a href="#">Forgot password?</a>
+      </div>
+      <button type="submit" class="btn-primary-lg" id="submitBtn">Sign In</button>
+    </form>
+    <div class="form-footer">Don't have an account? <a href="/pages/signup.html">Sign up</a></div>
+  </div></div>
+</div>
+<script src="/assets/app.js"></script>
+<script>
+if (window.lucide) window.lucide.createIcons();
+document.getElementById("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById("msg"); msg.innerHTML = "";
+  const username = document.getElementById("username").value.trim();
+  const password = document.getElementById("password").value;
+  const btn = document.getElementById("submitBtn"); btn.disabled = true;
+  try {
+    const res = await API.post("/auth/login", { username, password });
+    const csrf = document.cookie.match(/(?:^|; )vaultrd_csrf=([^;]+)/);
+    if (csrf) localStorage.setItem("vaultrd_csrf", decodeURIComponent(csrf[1]));
+    if (res.stage === "mfa_setup") {
+      sessionStorage.setItem("vaultrd_qr", res.qrCodeDataUrl);
+      sessionStorage.setItem("vaultrd_secret", res.secretBase32);
+      window.location.href = "/pages/mfa-setup.html";
+    } else if (res.stage === "mfa_verify") {
+      window.location.href = "/pages/mfa-verify.html";
+    }
+  } catch (err) {
+    msg.innerHTML = '<div class="alert-box error">' + (err.message || "Login failed") + '</div>';
+  } finally { btn.disabled = false; }
+});
+</script></body></html>

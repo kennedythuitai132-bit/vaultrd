@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Set up MFA - VaultRD</title><link rel="stylesheet" href="/assets/style.css">
+</head><body><div class="narrow">
+<h1>Set up MFA</h1>
+<p class="subtitle">Scan with Google Authenticator, Authy, or Microsoft Authenticator</p>
+<div id="msg"></div>
+<div class="qr-box"><img id="qrImg" alt="QR"></div>
+<p class="subtitle">Or add this key manually:</p>
+<div class="qr-secret" id="secret"></div>
+<form id="mfaForm">
+<label for="code">6-digit code from your app</label>
+<input id="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code">
+<button type="submit" class="btn btn-full" id="submitBtn">Enable MFA</button>
+</form></div>
+<script src="/assets/app.js"></script>
+<script>
+(function() {
+  const qr = sessionStorage.getItem('vaultrd_qr');
+  const secret = sessionStorage.getItem('vaultrd_secret');
+  if (!qr || !secret) { window.location.href = '/pages/login.html'; return; }
+  document.getElementById('qrImg').src = qr;
+  document.getElementById('secret').textContent = secret;
+})();
+document.getElementById('mfaForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('msg'); msg.innerHTML = '';
+  const code = document.getElementById('code').value.trim();
+  document.getElementById('submitBtn').disabled = true;
+  try {
+    await API.post('/auth/mfa/enable', { code });
+    sessionStorage.removeItem('vaultrd_qr');
+    sessionStorage.removeItem('vaultrd_secret');
+    UI.showSuccess(msg, 'MFA enabled! Redirecting...');
+    setTimeout(() => window.location.href = '/pages/dashboard.html', 800);
+  } catch (err) { UI.showError(msg, err.message || 'Invalid code'); }
+  finally { document.getElementById('submitBtn').disabled = false; }
+});
+</script></body></html>

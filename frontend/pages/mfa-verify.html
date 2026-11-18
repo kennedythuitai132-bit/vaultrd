@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Verify MFA - VaultRD</title><link rel="stylesheet" href="/assets/style.css">
+</head><body><div class="narrow">
+<h1>Two-factor authentication</h1>
+<p class="subtitle">Enter the 6-digit code from your app</p>
+<div id="msg"></div>
+<form id="mfaForm">
+<label for="code">6-digit code</label>
+<input id="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code" autofocus>
+<button type="submit" class="btn btn-full" id="submitBtn">Verify</button>
+</form></div>
+<script src="/assets/app.js"></script>
+<script>
+document.getElementById('mfaForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('msg'); msg.innerHTML = '';
+  const code = document.getElementById('code').value.trim();
+  document.getElementById('submitBtn').disabled = true;
+  try {
+    await API.post('/auth/mfa/verify', { code });
+    window.location.href = '/pages/dashboard.html';
+  } catch (err) {
+    UI.showError(msg, err.message || 'Invalid code');
+    document.getElementById('submitBtn').disabled = false;
+  }
+});
+</script></body></html>

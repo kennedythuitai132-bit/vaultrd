@@ -1,0 +1,3 @@
+# Netscape HTTP Cookie File
+127.0.0.1	FALSE	/	FALSE	0	vaultrd_csrf	854eb3b0c8480eebc7b53c281e53c9999748116315c1a741
+127.0.0.1	FALSE	/	FALSE	0	vaultrd_pending	1

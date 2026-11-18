@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Alerts — VaultRD</title>
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head><body>
+<script src="/assets/app.js"></script>
+<script>
+(async function() {
+  const user = await requireAdmin();
+  if (!user) return;
+  const mainArea = mountShell(user);
+  const content = UI.el("div", { class: "page-content" });
+  mainArea.appendChild(content);
+
+  content.appendChild(UI.el("div", { class: "page-hero" },
+    UI.el("h1", null, "Security Alerts"),
+    UI.el("p", null, "Automated anomaly detection and brute-force warnings")
+  ));
+
+  const msg = UI.el("div", { id: "msg" });
+  content.appendChild(msg);
+
+  const listPanel = UI.el("div", { class: "panel" });
+  listPanel.appendChild(UI.el("div", { class: "panel-head" },
+    UI.el("h3", null, "Open alerts"),
+    UI.el("span", { id: "alertCount", style: "font-size:.8rem;color:#64748b" }, "")
+  ));
+  const tbody = UI.el("tbody");
+  listPanel.appendChild(UI.el("table", null,
+    UI.el("thead", null, UI.el("tr", null,
+      UI.el("th", null, "Time"), UI.el("th", null, "Type"),
+      UI.el("th", null, "Severity"), UI.el("th", null, "Status"),
+      UI.el("th", null, "Details"), UI.el("th", null, "Actions")
+    )),
+    tbody
+  ));
+  content.appendChild(listPanel);
+
+  async function load() {
+    try {
+      const r = await API.get("/alerts");
+      tbody.innerHTML = "";
+      const open = r.alerts.filter(a => a.status === "open").length;
+      document.getElementById("alertCount").textContent = open + " open";
+      if (!r.alerts.length) {
+        tbody.appendChild(UI.el("tr", null, UI.el("td", { colspan: 6, style: "text-align:center;color:#94a3b8;padding:32px" }, "No alerts. All clear.")));
+        return;
+      }
+      for (const a of r.alerts) {
+        const actions = UI.el("td");
+        if (a.status === "open") {
+          const res = UI.el("button", { class: "btn btn-sm", style: "background:#10b981;color:#fff" }, "Resolve");
+          res.onclick = async () => {
+            try { await API.patch("/alerts/" + a.id + "/resolve"); load(); }
+            catch (e) { UI.showError(msg, e.message); }
+          };
+          actions.appendChild(res);
+        }
+        tbody.appendChild(UI.el("tr", null,
+          UI.el("td", null, UI.fmtDate(a.created_at)),
+          UI.el("td", null, a.alert_type || a.type),
+          UI.el("td", null, UI.badge(a.severity, a.severity === "high" ? "danger" : a.severity === "medium" ? "warn" : "muted")),
+          UI.el("td", null, UI.badge(a.status, a.status === "open" ? "danger" : "success")),
+          UI.el("td", null, a.details || "—"),
+          actions
+        ));
+      }
+    } catch (e) { UI.showError(msg, e.message); }
+  }
+
+  load();
+  if (window.lucide) window.lucide.createIcons();
+})();
+</script></body></html>

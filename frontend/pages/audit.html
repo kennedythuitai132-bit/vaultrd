@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Audit Log — VaultRD</title>
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head><body>
+<script src="/assets/app.js"></script>
+<script>
+(async function() {
+  const user = await requireAdmin();
+  if (!user) return;
+  const mainArea = mountShell(user);
+  const content = UI.el("div", { class: "page-content" });
+  mainArea.appendChild(content);
+
+  content.appendChild(UI.el("div", { class: "page-hero" },
+    UI.el("h1", null, "Audit Log"),
+    UI.el("p", null, "Every action is logged. Filter to investigate.")
+  ));
+
+  const msg = UI.el("div", { id: "msg" });
+  content.appendChild(msg);
+
+  const filterPanel = UI.el("div", { class: "panel", style: "margin-bottom:20px" });
+  const filterRow = UI.el("div", { style: "display:grid;grid-template-columns:1fr 1fr 1fr auto auto;gap:12px;align-items:end" });
+  filterRow.innerHTML = `
+    <div><label>Action</label><input id="f_action" placeholder="e.g. login_success"></div>
+    <div><label>Username</label><input id="f_user" placeholder="username"></div>
+    <div><label>Status</label><select id="f_status"><option value="">All</option><option value="success">Success</option><option value="failure">Failure</option></select></div>
+    <button id="applyBtn" class="btn">Filter</button>
+    <button id="clearBtn" class="btn btn-muted">Clear</button>
+  `;
+  filterPanel.appendChild(filterRow);
+  content.appendChild(filterPanel);
+
+  const listPanel = UI.el("div", { class: "panel" });
+  listPanel.appendChild(UI.el("div", { class: "panel-head" },
+    UI.el("h3", null, "Entries"),
+    UI.el("button", { class: "btn btn-muted", style: "margin-left:8px", onclick: () => {
+    let csv = "Time,User,Action,Status,IP\n";
+    r.logs.forEach(l => { csv += \`"${l.created_at}","${l.username || ''}","${l.action}","${l.status}","${l.ip_address || ''}"\n\`; });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "audit_log.csv"; a.click();
+  }}, "Export CSV"),
+    UI.el("span", { id: "logCount", style: "font-size:.8rem;color:#64748b" }, "")
+  ));
+  const tbody = UI.el("tbody");
+  listPanel.appendChild(UI.el("table", null,
+    UI.el("thead", null, UI.el("tr", null,
+      UI.el("th", null, "Time"), UI.el("th", null, "User"),
+      UI.el("th", null, "Action"), UI.el("th", null, "Status"), UI.el("th", null, "IP")
+    )),
+    tbody
+  ));
+  content.appendChild(listPanel);
+
+  async function load() {
+    try {
+      const q = new URLSearchParams();
+      const a = document.getElementById("f_action").value.trim();
+      const u = document.getElementById("f_user").value.trim();
+      const s = document.getElementById("f_status").value;
+      if (a) q.set("action", a);
+      if (u) q.set("username", u);
+      if (s) q.set("status", s);
+      const r = await API.get("/audit" + (q.toString() ? "?" + q : ""));
+      tbody.innerHTML = "";
+      document.getElementById("logCount").textContent = r.logs.length + " entries";
+      if (!r.logs.length) {
+        tbody.appendChild(UI.el("tr", null, UI.el("td", { colspan: 5, style: "text-align:center;color:#94a3b8;padding:32px" }, "No matching entries.")));
+        return;
+      }
+      for (const l of r.logs) {
+        tbody.appendChild(UI.el("tr", null,
+          UI.el("td", null, UI.fmtDate(l.created_at)),
+          UI.el("td", null, l.username || "—"),
+          UI.el("td", null, l.action),
+          UI.el("td", null, UI.badge(l.status, l.status === "success" ? "success" : "danger")),
+          UI.el("td", null, l.ip_address || "—")
+        ));
+      }
+    } catch (e) { UI.showError(msg, e.message); }
+  }
+
+  document.getElementById("applyBtn").onclick = load;
+  document.getElementById("clearBtn").onclick = () => {
+    document.getElementById("f_action").value = "";
+    document.getElementById("f_user").value = "";
+    document.getElementById("f_status").value = "";
+    load();
+  };
+
+  load();
+  if (window.lucide) window.lucide.createIcons();
+})();
+</script></body></html>

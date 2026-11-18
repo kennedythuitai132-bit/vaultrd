@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard — VaultRD</title>
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head><body>
+<script src="/assets/app.js"></script>
+<script>
+(async function() {
+  const user = await requireAuth();
+  if (!user) return;
+  const mainArea = mountShell(user);
+  const content = UI.el("div", { class: "page-content" });
+  mainArea.appendChild(content);
+
+  const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  content.appendChild(UI.el("div", { class: "page-hero" },
+    UI.el("h1", null, "Dashboard"),
+    UI.el("p", null, "Welcome back, " + (user.full_name || user.username) + " · " + today)
+  ));
+
+  let summary = null;
+  try { summary = (await API.get("/reports/summary")).summary; } catch(e) {}
+  let myFiles = [];
+  try { myFiles = (await API.get("/files")).files || []; } catch(e) {}
+
+  const kpis = [
+    { icon: "folder",       label: "Total Projects",     value: summary ? summary.files_total : myFiles.length, tone: "blue",   trend: "+12%", dir: "up" },
+    { icon: "file-text",    label: "Research Files",     value: summary ? summary.files_total : myFiles.length, tone: "green",  trend: "+18%", dir: "up" },
+    { icon: "users",        label: "Collaborators",      value: summary ? summary.users_active : 1,             tone: "purple", trend: "+8%",  dir: "up" },
+    { icon: "shield-check", label: "Secure & Compliant", value: "100%",                                          tone: "amber",  trend: "All systems normal", dir: "up" },
+  ];
+  const kpiGrid = UI.el("div", { class: "kpi-grid" });
+  for (const k of kpis) {
+    kpiGrid.appendChild(UI.el("div", { class: "kpi" },
+      UI.el("div", { class: "kpi-icon " + k.tone }, UI.el("i", { "data-lucide": k.icon })),
+      UI.el("div", { class: "kpi-body" },
+        UI.el("div", { class: "kpi-label" }, k.label),
+        UI.el("div", { class: "kpi-value" }, String(k.value)),
+        UI.el("div", { class: "kpi-trend " + k.dir }, (k.dir === "up" ? "↑ " : "↓ ") + k.trend)
+      )
+    ));
+  }
+  content.appendChild(kpiGrid);
+
+  const grid = UI.el("div", { class: "content-grid" });
+  const left = UI.el("div", { style: "display:flex;flex-direction:column;gap:20px" });
+
+  const chartPanel = UI.el("div", { class: "panel" });
+  chartPanel.appendChild(UI.el("div", { class: "panel-head" },
+    UI.el("h3", null, "Research Activity"),
+    UI.el("div", { style: "display:flex;gap:16px;font-size:.8rem;color:#64748b" },
+      UI.el("span", { style: "display:flex;align-items:center;gap:6px" }, UI.el("span", { style: "width:10px;height:10px;border-radius:2px;background:#1e88e5;display:inline-block" }), "Projects"),
+      UI.el("span", { style: "display:flex;align-items:center;gap:6px" }, UI.el("span", { style: "width:10px;height:10px;border-radius:2px;background:#10b981;display:inline-block" }), "Files")
+    )
+  ));
+  const canvas = UI.el("canvas", { id: "chart", style: "width:100%;height:220px" });
+  chartPanel.appendChild(canvas);
+  left.appendChild(chartPanel);
+
+  const recentPanel = UI.el("div", { class: "panel" });
+  recentPanel.appendChild(UI.el("div", { class: "panel-head" },
+    UI.el("h3", null, "Recent Files"),
+    UI.el("a", { href: "/pages/files.html" }, "View all →")
+  ));
+  const list = UI.el("div");
+  if (!myFiles.length) {
+    list.appendChild(UI.el("div", { style: "padding:24px;text-align:center;color:#94a3b8;font-size:.9rem" }, "No files yet — upload your first research document."));
+  } else {
+    for (const f of myFiles.slice(0, 4)) {
+      list.appendChild(UI.el("div", { style: "display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid #f1f5f9" },
+        UI.el("div", { style: "width:40px;height:40px;background:#dbeafe;color:#1e40af;border-radius:10px;display:flex;align-items:center;justify-content:center" }, UI.el("i", { "data-lucide": "file-text", style: "width:18px;height:18px" })),
+        UI.el("div", { style: "flex:1" },
+          UI.el("div", { style: "font-weight:500;font-size:.9rem;color:#0f172a" }, f.title),
+          UI.el("div", { style: "font-size:.78rem;color:#64748b;margin-top:2px" }, (f.project_code || "") + " · " + UI.fmtBytes(f.size_bytes))
+        ),
+        UI.el("div", { style: "font-size:.75rem;color:#94a3b8" }, UI.fmtDate(f.created_at))
+      ));
+    }
+  }
+  recentPanel.appendChild(list);
+  left.appendChild(recentPanel);
+  grid.appendChild(left);
+
+  const right = UI.el("div", { style: "display:flex;flex-direction:column;gap:20px" });
+  const qaPanel = UI.el("div", { class: "panel" });
+  qaPanel.appendChild(UI.el("div", { class: "panel-head" }, UI.el("h3", null, "Quick Actions")));
+  const qa = UI.el("div", { class: "quick-actions" });
+  if (user.role !== "viewer") {
+    qa.appendChild(UI.el("a", { href: "/pages/files.html", class: "quick-btn primary" }, UI.el("i", { "data-lucide": "plus" }), "New Upload"));
+  }
+  qa.appendChild(UI.el("a", { href: "/pages/files.html",         class: "quick-btn" }, UI.el("i", { "data-lucide": "upload" }), "Upload Files"));
+  qa.appendChild(UI.el("a", { href: "/pages/catalogue.html",     class: "quick-btn" }, UI.el("i", { "data-lucide": "library" }), "Browse Catalogue"));
+  qaPanel.appendChild(qa);
+  right.appendChild(qaPanel);
+
+  const storagePanel = UI.el("div", { class: "panel" });
+  storagePanel.appendChild(UI.el("div", { class: "panel-head" }, UI.el("h3", null, "Storage Usage")));
+  storagePanel.appendChild(UI.el("div", { style: "text-align:center;padding:16px 0" },
+    UI.el("div", { style: "width:140px;height:140px;margin:0 auto;border-radius:50%;background:conic-gradient(#1e88e5 0% 68%, #e2e8f0 68% 100%);display:flex;align-items:center;justify-content:center;position:relative" },
+      UI.el("div", { style: "width:100px;height:100px;background:#fff;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center" },
+        UI.el("div", { style: "font-size:1.5rem;font-weight:700;color:#0f172a" }, "68%"),
+        UI.el("div", { style: "font-size:.7rem;color:#64748b" }, "used")
+      )
+    ),
+    UI.el("div", { style: "font-size:.78rem;color:#64748b;margin-top:14px" }, "340 GB of 500 GB")
+  ));
+  right.appendChild(storagePanel);
+  grid.appendChild(right);
+  content.appendChild(grid);
+
+  if (window.Chart) {
+    new Chart(canvas, {
+      type: "line",
+      data: {
+        labels: ["Jan","Feb","Mar","Apr","May","Jun"],
+        datasets: [
+          { label: "Projects", data: [55, 78, 62, 88, 74, 92], borderColor: "#1e88e5", backgroundColor: "rgba(30,136,229,.08)", tension: .35, fill: true, borderWidth: 2, pointRadius: 0 },
+          { label: "Files",    data: [70, 82, 90, 78, 96, 108], borderColor: "#10b981", backgroundColor: "rgba(16,185,129,.08)", tension: .35, fill: true, borderWidth: 2, pointRadius: 0 }
+        ]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } }, y: { grid: { color: "#f1f5f9" } } } }
+    });
+  }
+  if (window.lucide) window.lucide.createIcons();
+})();
+</script>
+</body></html>

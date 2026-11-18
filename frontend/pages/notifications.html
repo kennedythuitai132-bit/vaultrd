@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Notifications — VaultRD</title>
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head><body>
+<script src="/assets/app.js"></script>
+<script>
+(async function() {
+  const user = await requireAuth();
+  if (!user) return;
+  const mainArea = mountShell(user);
+  const content = UI.el("div", { class: "page-content" });
+  mainArea.appendChild(content);
+
+  content.appendChild(UI.el("div", { class: "page-hero" },
+    UI.el("h1", null, "Notifications"),
+    UI.el("p", null, "Recent system updates and activity in your network")
+  ));
+
+  const msg = UI.el("div", { id: "msg" });
+  content.appendChild(msg);
+
+  const listPanel = UI.el("div", { class: "panel" });
+  listPanel.innerHTML = `
+    <div style="display:flex;gap:16px;padding:16px 0;border-bottom:1px solid #e2e8f0">
+      <div style="width:40px;height:40px;background:#dbeafe;color:#1e40af;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0"><i data-lucide="shield-check" style="width:20px;height:20px"></i></div>
+      <div>
+        <div style="font-weight:600;color:#0f172a;font-size:.95rem">Welcome to VaultRD</div>
+        <div style="font-size:.85rem;color:#64748b;margin-top:4px">Your account is fully set up. You can now upload files and collaborate.</div>
+        <div style="font-size:.75rem;color:#94a3b8;margin-top:8px">Just now</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:16px;padding:16px 0">
+      <div style="width:40px;height:40px;background:#fef3c7;color:#92400e;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0"><i data-lucide="info" style="width:20px;height:20px"></i></div>
+      <div>
+        <div style="font-weight:600;color:#0f172a;font-size:.95rem">No new alerts</div>
+        <div style="font-size:.85rem;color:#64748b;margin-top:4px">Your account has no pending security warnings or system notifications.</div>
+        <div style="font-size:.75rem;color:#94a3b8;margin-top:8px">Just now</div>
+      </div>
+    </div>
+  `;
+  content.appendChild(listPanel);
+
+  if (window.lucide) window.lucide.createIcons();
+})();
+</script></body></html>

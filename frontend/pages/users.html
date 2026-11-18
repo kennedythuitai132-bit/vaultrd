@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>User Management — VaultRD</title>
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head><body>
+<script src="/assets/app.js"></script>
+<script>
+(async function() {
+  const user = await requireAdmin();
+  if (!user) return;
+  const mainArea = mountShell(user);
+  const content = UI.el("div", { class: "page-content" });
+  mainArea.appendChild(content);
+
+  content.appendChild(UI.el("div", { class: "page-hero" },
+    UI.el("h1", null, "User Management"),
+    UI.el("p", null, "Approve signups, create accounts, assign roles")
+  ));
+
+  const msg = UI.el("div", { id: "msg" });
+  content.appendChild(msg);
+
+  const formPanel = UI.el("div", { class: "panel", style: "margin-bottom:20px" });
+  formPanel.appendChild(UI.el("div", { class: "panel-head" }, UI.el("h3", null, "Create user")));
+  const form = UI.el("form", { id: "createForm", style: "display:grid;grid-template-columns:1fr 1fr;gap:12px" });
+  form.innerHTML = `
+    <div><label>Username</label><input id="u_username" required maxlength="50"></div>
+    <div><label>Email</label><input id="u_email" type="email" required></div>
+    <div><label>Full name</label><input id="u_fullname" required maxlength="150"></div>
+    <div><label>Role</label><select id="u_role"><option value="researcher">Researcher</option><option value="viewer">Viewer</option><option value="admin">Admin</option></select></div>
+    <div style="grid-column:1/-1"><label>Password</label><input id="u_password" type="password" minlength="8" required></div>
+    <div style="grid-column:1/-1"><button type="submit" class="btn" id="createBtn">Create user</button></div>
+  `;
+  formPanel.appendChild(form);
+  content.appendChild(formPanel);
+
+  const listPanel = UI.el("div", { class: "panel" });
+  listPanel.appendChild(UI.el("div", { class: "panel-head" },
+    UI.el("h3", null, "All users"),
+    UI.el("span", { id: "userCount", style: "font-size:.8rem;color:#64748b" }, "")
+  ));
+  const tbody = UI.el("tbody");
+  listPanel.appendChild(UI.el("table", null,
+    UI.el("thead", null, UI.el("tr", null,
+      UI.el("th", null, "ID"), UI.el("th", null, "Username"),
+      UI.el("th", null, "Full name"), UI.el("th", null, "Role"),
+      UI.el("th", null, "Approval"), UI.el("th", null, "Status"),
+      UI.el("th", null, "Last login"), UI.el("th", null, "Actions")
+    )),
+    tbody
+  ));
+  content.appendChild(listPanel);
+
+  async function load() {
+    try {
+      const r = await API.get("/users");
+      tbody.innerHTML = "";
+      document.getElementById("userCount").textContent = r.users.length + " users";
+      for (const u of r.users) {
+        const actions = UI.el("td");
+        if (!u.is_approved) {
+          const appr = UI.el("button", { class: "btn btn-sm", style: "margin-right:6px;background:#10b981;color:#fff" }, "Approve");
+          appr.onclick = async () => {
+            try { await API.patch("/users/" + u.id + "/approve"); load(); }
+            catch (e) { UI.showError(msg, e.message); }
+          };
+          actions.appendChild(appr);
+        }
+        const toggle = UI.el("button", { class: "btn btn-sm btn-muted" }, u.is_active ? "Deactivate" : "Activate");
+        toggle.onclick = async () => {
+          try { await API.patch("/users/" + u.id, { is_active: !u.is_active }); load(); }
+          catch (e) { UI.showError(msg, e.message); }
+        };
+        actions.appendChild(toggle);
+
+        const approvalBadge = u.is_approved ? UI.badge("approved", "success") : UI.badge("pending", "warn");
+        tbody.appendChild(UI.el("tr", null,
+          UI.el("td", null, String(u.id)),
+          UI.el("td", null, u.username),
+          UI.el("td", null, u.full_name),
+          UI.el("td", null, UI.roleTag(u.role)),
+          UI.el("td", null, approvalBadge),
+          UI.el("td", null, UI.badge(u.is_active ? "active" : "inactive", u.is_active ? "success" : "muted")),
+          UI.el("td", null, UI.fmtDate(u.last_login_at)),
+          actions
+        ));
+      }
+    } catch (e) { UI.showError(msg, e.message); }
+  }
+
+  document.getElementById("createForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    msg.innerHTML = "";
+    const btn = document.getElementById("createBtn"); btn.disabled = true;
+    try {
+      await API.post("/users", {
+        username: document.getElementById("u_username").value.trim(),
+        email: document.getElementById("u_email").value.trim(),
+        full_name: document.getElementById("u_fullname").value.trim(),
+        role: document.getElementById("u_role").value,
+        password: document.getElementById("u_password").value
+      });
+      UI.showSuccess(msg, "User created");
+      e.target.reset();
+      load();
+    } catch (err) { UI.showError(msg, err.message); }
+    finally { btn.disabled = false; }
+  });
+
+  load();
+  if (window.lucide) window.lucide.createIcons();
+})();
+</script></body></html>

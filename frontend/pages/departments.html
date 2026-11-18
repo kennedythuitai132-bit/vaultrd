@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Departments — VaultRD</title>
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head><body>
+<script src="/assets/app.js"></script>
+<script>
+(async function() {
+  const user = await requireAuth();
+  if (!user) return;
+  const mainArea = mountShell(user);
+  const content = UI.el("div", { class: "page-content" });
+  mainArea.appendChild(content);
+
+  content.appendChild(UI.el("div", { class: "page-hero" },
+    UI.el("h1", null, "Departments"),
+    UI.el("p", null, "Organise researchers into institutional departments")
+  ));
+
+  const msg = UI.el("div", { id: "msg" });
+  content.appendChild(msg);
+
+  const canEdit = user.role === "admin";
+
+  if (canEdit) {
+    const formPanel = UI.el("div", { class: "panel", style: "margin-bottom:20px" });
+    formPanel.appendChild(UI.el("div", { class: "panel-head" }, UI.el("h3", null, "Add department")));
+    const form = UI.el("form", { id: "deptForm", style: "display:grid;grid-template-columns:1fr 1fr;gap:12px" });
+    form.innerHTML = `
+      <div><label>Name</label><input id="d_name" required placeholder="e.g. Computer Science"></div>
+      <div><label>Code</label><input id="d_code" placeholder="e.g. CS"></div>
+      <div style="grid-column:1/-1"><label>Description</label><textarea id="d_desc" rows="2" placeholder="Optional short description"></textarea></div>
+      <div style="grid-column:1/-1"><button type="submit" class="btn">Create department</button></div>
+    `;
+    formPanel.appendChild(form);
+    content.appendChild(formPanel);
+  }
+
+  const listPanel = UI.el("div", { class: "panel" });
+  listPanel.appendChild(UI.el("div", { class: "panel-head" },
+    UI.el("h3", null, "Departments"),
+    UI.el("span", { id: "deptCount", style: "font-size:.8rem;color:#64748b" }, "0")
+  ));
+  const tbody = UI.el("tbody");
+  listPanel.appendChild(UI.el("table", null,
+    UI.el("thead", null, UI.el("tr", null,
+      UI.el("th", null, "ID"), UI.el("th", null, "Name"), UI.el("th", null, "Code"),
+      UI.el("th", null, "Members"), UI.el("th", null, "Head"),
+      canEdit ? UI.el("th", null, "Actions") : null
+    )),
+    tbody
+  ));
+  content.appendChild(listPanel);
+
+  async function load() {
+    try {
+      const r = await API.get("/departments");
+      tbody.innerHTML = "";
+      document.getElementById("deptCount").textContent = r.departments.length + " departments";
+      if (!r.departments.length) {
+        tbody.appendChild(UI.el("tr", null, UI.el("td", { colspan: canEdit ? 6 : 5, style: "text-align:center;color:#94a3b8;padding:32px" }, "No departments yet.")));
+      } else {
+        for (const d of r.departments) {
+          const row = UI.el("tr", null,
+            UI.el("td", null, String(d.id)),
+            UI.el("td", null, d.name),
+            UI.el("td", null, d.code || "-"),
+            UI.el("td", null, String(d.member_count || 0)),
+            UI.el("td", null, d.head_username || "-")
+          );
+          if (canEdit) {
+            const actions = UI.el("td");
+            const del = UI.el("button", { class: "btn btn-danger btn-sm" }, "Delete");
+            del.onclick = async () => {
+              if (!confirm("Delete department \"" + d.name + "\"?")) return;
+              try { await API.del("/departments/" + d.id); load(); } catch (e) { UI.showError(msg, e.message); }
+            };
+            actions.appendChild(del);
+            row.appendChild(actions);
+          }
+          tbody.appendChild(row);
+        }
+      }
+    } catch (e) { msg.innerHTML = '<div class="alert-box error">' + e.message + '</div>'; }
+  }
+
+  if (canEdit) {
+    document.getElementById("deptForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      msg.innerHTML = "";
+      try {
+        await API.post("/departments", {
+          name: document.getElementById("d_name").value.trim(),
+          code: document.getElementById("d_code").value.trim() || null,
+          description: document.getElementById("d_desc").value.trim() || null,
+        });
+        e.target.reset();
+        load();
+      } catch (err) { msg.innerHTML = '<div class="alert-box error">' + err.message + '</div>'; }
+    });
+  }
+
+  load();
+  if (window.lucide) window.lucide.createIcons();
+})();
+</script></body></html>

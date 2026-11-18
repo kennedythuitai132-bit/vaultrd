@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Settings — VaultRD</title>
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head><body>
+<script src="/assets/app.js"></script>
+<script>
+(async function() {
+  const user = await requireAuth();
+  if (!user) return;
+  const mainArea = mountShell(user);
+  const content = UI.el("div", { class: "page-content" });
+  mainArea.appendChild(content);
+
+  content.appendChild(UI.el("div", { class: "page-hero" },
+    UI.el("h1", null, "Settings"),
+    UI.el("p", null, "Manage your account preferences and security")
+  ));
+
+  const msg = UI.el("div", { id: "msg" });
+  content.appendChild(msg);
+
+  const profilePanel = UI.el("div", { class: "panel", style: "margin-bottom:20px" });
+  profilePanel.appendChild(UI.el("div", { class: "panel-head" }, UI.el("h3", null, "Profile Information")));
+  const pForm = UI.el("form", { id: "profileForm", style: "display:grid;grid-template-columns:1fr 1fr;gap:12px" });
+  pForm.innerHTML = `
+    <div><label>Username</label><input value="${user.username}" disabled style="background:#f1f5f9;color:#94a3b8"></div>
+    <div><label>Role</label><input value="${user.role}" disabled style="background:#f1f5f9;color:#94a3b8;text-transform:capitalize"></div>
+    <div style="grid-column:1/-1"><label>Full name</label><input id="set_fullname" value="${user.full_name || ''}" required></div>
+    <div style="grid-column:1/-1"><label>Email address</label><input id="set_email" value="${user.email || ''}" type="email" required></div>
+    <div style="grid-column:1/-1"><button type="submit" class="btn" id="saveBtn">Save Changes</button></div>
+  `;
+  profilePanel.appendChild(pForm);
+  content.appendChild(profilePanel);
+
+  pForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    msg.innerHTML = "";
+    const btn = document.getElementById("saveBtn"); btn.disabled = true;
+    try {
+      await API.patch("/auth/profile", {
+        full_name: document.getElementById("set_fullname").value.trim(),
+        email: document.getElementById("set_email").value.trim()
+      });
+      UI.showSuccess(msg, "Profile updated successfully");
+    } catch(err) { UI.showError(msg, err.message); }
+    finally { btn.disabled = false; }
+  });
+
+  const securityPanel = UI.el("div", { class: "panel" });
+  securityPanel.appendChild(UI.el("div", { class: "panel-head" }, UI.el("h3", null, "Security")));
+  
+  const mfaRow = UI.el("div", { style: "display:flex;align-items:center;justify-content:space-between;padding:16px 0;border-bottom:1px solid #e2e8f0" },
+    UI.el("div", null,
+      UI.el("div", { style: "font-weight:600;color:#0f172a;font-size:.95rem" }, "Multi-Factor Authentication (MFA)"),
+      UI.el("div", { style: "font-size:.82rem;color:#64748b;margin-top:4px" }, "Secure your account with an authenticator app.")
+    ),
+    UI.el("button", { class: "btn", onclick: () => window.location.href = "/pages/mfa-setup.html" }, "Configure")
+  );
+  securityPanel.appendChild(mfaRow);
+
+  const pwdRow = UI.el("div", { style: "display:flex;align-items:center;justify-content:space-between;padding:16px 0" },
+    UI.el("div", null,
+      UI.el("div", { style: "font-weight:600;color:#0f172a;font-size:.95rem" }, "Change Password"),
+      UI.el("div", { style: "font-size:.82rem;color:#64748b;margin-top:4px" }, "Update your login credentials.")
+    ),
+    UI.el("button", { class: "btn", onclick: () => alert("Password reset flow coming soon.") }, "Update")
+  );
+  securityPanel.appendChild(pwdRow);
+  
+  content.appendChild(securityPanel);
+
+  if (window.lucide) window.lucide.createIcons();
+})();
+</script></body></html>

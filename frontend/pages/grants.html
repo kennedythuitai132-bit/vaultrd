@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Grants — VaultRD</title>
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head><body>
+<script src="/assets/app.js"></script>
+<script>
+(async function() {
+  const user = await requireAuth();
+  if (!user) return;
+  const mainArea = mountShell(user);
+  const content = UI.el("div", { class: "page-content" });
+  mainArea.appendChild(content);
+
+  content.appendChild(UI.el("div", { class: "page-hero" },
+    UI.el("h1", null, "Grants & Funding"),
+    UI.el("p", null, "Track grant applications, awarded funds, and project deadlines")
+  ));
+
+  const msg = UI.el("div", { id: "msg" });
+  content.appendChild(msg);
+
+  const summary = UI.el("div", { class: "kpi-grid", style: "grid-template-columns:repeat(3,1fr);margin-bottom:20px" });
+  function makeKpi(icon, tone, label, id) {
+    return UI.el("div", { class: "kpi" },
+      UI.el("div", { class: "kpi-icon " + tone }, UI.el("i", { "data-lucide": icon })),
+      UI.el("div", { class: "kpi-body" },
+        UI.el("div", { class: "kpi-label" }, label),
+        UI.el("div", { class: "kpi-value", id }, "0")
+      )
+    );
+  }
+  summary.appendChild(makeKpi("hand-coins", "blue", "Total grants", "grTotal"));
+  summary.appendChild(makeKpi("check-circle", "green", "Awarded", "grAwarded"));
+  summary.appendChild(makeKpi("clock", "amber", "Pending", "grPending"));
+  content.appendChild(summary);
+
+  const formPanel = UI.el("div", { class: "panel", style: "margin-bottom:20px" });
+  formPanel.appendChild(UI.el("div", { class: "panel-head" }, UI.el("h3", null, "Add a grant")));
+  const form = UI.el("form", { id: "grantForm", style: "display:grid;grid-template-columns:1fr 1fr;gap:12px" });
+  form.innerHTML = `
+    <div><label>Grant title</label><input id="g_title" required></div>
+    <div><label>Funder</label><input id="g_funder" required></div>
+    <div><label>Amount (KES)</label><input id="g_amount" type="number" min="0" value="0" required></div>
+    <div><label>Status</label><select id="g_status"><option value="pending">Pending</option><option value="awarded">Awarded</option><option value="rejected">Rejected</option></select></div>
+    <div><label>Deadline</label><input id="g_deadline" type="date"></div>
+    <div><label>Lead researcher</label><input id="g_lead"></div>
+    <div style="grid-column:1/-1"><button type="submit" class="btn">Add grant</button></div>
+  `;
+  formPanel.appendChild(form);
+  content.appendChild(formPanel);
+
+  const listPanel = UI.el("div", { class: "panel" });
+  listPanel.appendChild(UI.el("div", { class: "panel-head" },
+    UI.el("h3", null, "All grants"),
+    UI.el("span", { id: "grantCount", style: "font-size:.8rem;color:#64748b" }, "0 grants")
+  ));
+  const tbody = UI.el("tbody", { id: "grantBody" });
+  listPanel.appendChild(UI.el("table", null,
+    UI.el("thead", null, UI.el("tr", null,
+      UI.el("th", null, "Title"), UI.el("th", null, "Funder"), UI.el("th", null, "Amount"),
+      UI.el("th", null, "Status"), UI.el("th", null, "Deadline"), UI.el("th", null, "Actions")
+    )),
+    tbody
+  ));
+  content.appendChild(listPanel);
+
+  async function load() {
+    try {
+      const r = await API.get("/grants");
+      tbody.innerHTML = "";
+      if (!r.grants.length) {
+        tbody.appendChild(UI.el("tr", null, UI.el("td", { colspan: 6, style: "text-align:center;color:#94a3b8;padding:32px" }, "No grants yet. Add your first grant above.")));
+      } else {
+        for (const g of r.grants) {
+          const del = UI.el("button", { class: "btn btn-danger btn-sm" }, "Delete");
+          del.onclick = async () => {
+            if (!confirm("Delete this grant?")) return;
+            try { await API.del("/grants/" + g.id); load(); } catch (e) { UI.showError(msg, e.message); }
+          };
+          tbody.appendChild(UI.el("tr", null,
+            UI.el("td", null, g.title),
+            UI.el("td", null, g.funder),
+            UI.el("td", null, "KES " + Number(g.amount).toLocaleString()),
+            UI.el("td", null, UI.badge(g.status, g.status === "awarded" ? "success" : g.status === "pending" ? "warn" : "danger")),
+            UI.el("td", null, g.deadline || "-"),
+            UI.el("td", null, del)
+          ));
+        }
+      }
+      document.getElementById("grTotal").textContent = r.grants.length;
+      document.getElementById("grAwarded").textContent = r.grants.filter(g => g.status === "awarded").length;
+      document.getElementById("grPending").textContent = r.grants.filter(g => g.status === "pending").length;
+      document.getElementById("grantCount").textContent = r.grants.length + " grants";
+    } catch (e) { msg.innerHTML = '<div class="alert-box error">' + e.message + '</div>'; }
+  }
+
+  document.getElementById("grantForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    msg.innerHTML = "";
+    try {
+      await API.post("/grants", {
+        title: document.getElementById("g_title").value.trim(),
+        funder: document.getElementById("g_funder").value.trim(),
+        amount: Number(document.getElementById("g_amount").value) || 0,
+        status: document.getElementById("g_status").value,
+        deadline: document.getElementById("g_deadline").value || null,
+        lead_researcher: document.getElementById("g_lead").value.trim() || null,
+      });
+      e.target.reset();
+      load();
+    } catch (err) { msg.innerHTML = '<div class="alert-box error">' + err.message + '</div>'; }
+  });
+
+  load();
+  if (window.lucide) window.lucide.createIcons();
+})();
+</script></body></html>
