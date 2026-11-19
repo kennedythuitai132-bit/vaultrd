@@ -8,3 +8,5 @@ dist/
 backend/cookies.txt
 backend/qrCodeDataUrl.txt
 backend/_*.mjs
+
+_backup_*/

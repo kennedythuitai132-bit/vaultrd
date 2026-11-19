@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Departments — VaultRD</title>
+<title>Departments - VaultRD</title>
 <link rel="stylesheet" href="/assets/style.css">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 </head><body>
@@ -30,7 +30,8 @@
     const form = UI.el("form", { id: "deptForm", style: "display:grid;grid-template-columns:1fr 1fr;gap:12px" });
     form.innerHTML = `
       <div><label>Name</label><input id="d_name" required placeholder="e.g. Computer Science"></div>
-      <div><label>Code</label><input id="d_code" placeholder="e.g. CS"></div>
+      <div><label>Code</label><input id="d_code" required placeholder="e.g. CS"></div>
+      <div style="grid-column:1/-1"><label>Head of department</label><select id="d_head" required></select></div>
       <div style="grid-column:1/-1"><label>Description</label><textarea id="d_desc" rows="2" placeholder="Optional short description"></textarea></div>
       <div style="grid-column:1/-1"><button type="submit" class="btn">Create department</button></div>
     `;
@@ -54,6 +55,22 @@
   ));
   content.appendChild(listPanel);
 
+  async function loadHeads() {
+    if (!canEdit) return;
+    const sel = document.getElementById("d_head");
+    const r = await API.get("/users");
+    sel.innerHTML = "";
+    const ph = document.createElement("option");
+    ph.value = ""; ph.textContent = "Select head of department";
+    sel.appendChild(ph);
+    for (const u of r.users.filter(x => x.is_active)) {
+      const o = document.createElement("option");
+      o.value = String(u.id);
+      o.textContent = u.full_name + " (" + u.username + ")";
+      sel.appendChild(o);
+    }
+  }
+
   async function load() {
     try {
       const r = await API.get("/departments");
@@ -63,12 +80,13 @@
         tbody.appendChild(UI.el("tr", null, UI.el("td", { colspan: canEdit ? 6 : 5, style: "text-align:center;color:#94a3b8;padding:32px" }, "No departments yet.")));
       } else {
         for (const d of r.departments) {
+          const headText = d.head_name ? d.head_name + " (" + d.head_username + ")" : (d.head_username || "-");
           const row = UI.el("tr", null,
             UI.el("td", null, String(d.id)),
             UI.el("td", null, d.name),
             UI.el("td", null, d.code || "-"),
             UI.el("td", null, String(d.member_count || 0)),
-            UI.el("td", null, d.head_username || "-")
+            UI.el("td", null, headText)
           );
           if (canEdit) {
             const actions = UI.el("td");
@@ -83,7 +101,7 @@
           tbody.appendChild(row);
         }
       }
-    } catch (e) { msg.innerHTML = '<div class="alert-box error">' + e.message + '</div>'; }
+    } catch (e) { UI.showError(msg, e.message); }
   }
 
   if (canEdit) {
@@ -93,15 +111,18 @@
       try {
         await API.post("/departments", {
           name: document.getElementById("d_name").value.trim(),
-          code: document.getElementById("d_code").value.trim() || null,
+          code: document.getElementById("d_code").value.trim(),
+          head_user_id: Number(document.getElementById("d_head").value),
           description: document.getElementById("d_desc").value.trim() || null,
         });
         e.target.reset();
+        UI.showSuccess(msg, "Department created");
         load();
-      } catch (err) { msg.innerHTML = '<div class="alert-box error">' + err.message + '</div>'; }
+      } catch (err) { UI.showError(msg, err.message); }
     });
   }
 
+  try { await loadHeads(); } catch (e) { UI.showError(msg, e.message); }
   load();
   if (window.lucide) window.lucide.createIcons();
 })();

@@ -284,10 +284,6 @@ body.v2 { background:#f1f5f9; color:#0f172a; }
 .sb-item.active:hover { background: #1976d2; }
 .sb-section-label { font-size: .7rem; text-transform: uppercase; color: #475569; letter-spacing: .08em; padding: 16px 12px 6px; font-weight: 600; }
 
-.sb-upgrade { margin: 16px; padding: 16px; background: linear-gradient(135deg, #1a237e, #283593); border-radius: 12px; color: #e0e7ff; }
-.sb-upgrade h4 { font-size: .9rem; font-weight: 600; color: #fff; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
-.sb-upgrade p { font-size: .75rem; color: #a5b4fc; margin-bottom: 12px; }
-.sb-upgrade button { width: 100%; padding: 8px; background: #1e88e5; color: #fff; border: none; border-radius: 8px; font-size: .8rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
 
 .main-area { background: #f1f5f9; min-height: 100vh; display: flex; flex-direction: column; }
 

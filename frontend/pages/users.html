@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>User Management — VaultRD</title>
+<title>User Management - VaultRD</title>
 <link rel="stylesheet" href="/assets/style.css">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 </head><body>
@@ -16,11 +16,13 @@
 
   content.appendChild(UI.el("div", { class: "page-hero" },
     UI.el("h1", null, "User Management"),
-    UI.el("p", null, "Approve signups, create accounts, assign roles")
+    UI.el("p", null, "Approve signups, create accounts, assign roles and departments")
   ));
 
   const msg = UI.el("div", { id: "msg" });
   content.appendChild(msg);
+
+  let depts = [];
 
   const formPanel = UI.el("div", { class: "panel", style: "margin-bottom:20px" });
   formPanel.appendChild(UI.el("div", { class: "panel-head" }, UI.el("h3", null, "Create user")));
@@ -30,6 +32,7 @@
     <div><label>Email</label><input id="u_email" type="email" required></div>
     <div><label>Full name</label><input id="u_fullname" required maxlength="150"></div>
     <div><label>Role</label><select id="u_role"><option value="researcher">Researcher</option><option value="viewer">Viewer</option><option value="admin">Admin</option></select></div>
+    <div style="grid-column:1/-1"><label>Department</label><select id="u_dept" required></select></div>
     <div style="grid-column:1/-1"><label>Password</label><input id="u_password" type="password" minlength="8" required></div>
     <div style="grid-column:1/-1"><button type="submit" class="btn" id="createBtn">Create user</button></div>
   `;
@@ -45,13 +48,43 @@
   listPanel.appendChild(UI.el("table", null,
     UI.el("thead", null, UI.el("tr", null,
       UI.el("th", null, "ID"), UI.el("th", null, "Username"),
-      UI.el("th", null, "Full name"), UI.el("th", null, "Role"),
+      UI.el("th", null, "Full name"), UI.el("th", null, "Department"),
+      UI.el("th", null, "Role"),
       UI.el("th", null, "Approval"), UI.el("th", null, "Status"),
       UI.el("th", null, "Last login"), UI.el("th", null, "Actions")
     )),
     tbody
   ));
   content.appendChild(listPanel);
+
+  function fillDeptSelect(sel, placeholder, selectedId) {
+    sel.innerHTML = "";
+    const ph = document.createElement("option");
+    ph.value = ""; ph.textContent = placeholder;
+    sel.appendChild(ph);
+    for (const d of depts) {
+      const o = document.createElement("option");
+      o.value = String(d.id);
+      o.textContent = d.name + (d.code ? " (" + d.code + ")" : "");
+      if (selectedId && Number(selectedId) === Number(d.id)) o.selected = true;
+      sel.appendChild(o);
+    }
+  }
+
+  function syncCreateDept() {
+    const sel = document.getElementById("u_dept");
+    const role = document.getElementById("u_role").value;
+    sel.required = role !== "admin";
+    if (sel.options.length) sel.options[0].textContent = role === "admin" ? "No department (optional)" : "Select department";
+  }
+
+  async function loadDepts() {
+    const r = await API.get("/departments");
+    depts = r.departments;
+    fillDeptSelect(document.getElementById("u_dept"), "Select department", null);
+    syncCreateDept();
+    if (!depts.length) UI.showError(msg, "Create a department first (Departments page) before adding non-admin users.");
+  }
 
   async function load() {
     try {
@@ -68,6 +101,22 @@
           };
           actions.appendChild(appr);
         }
+
+        const current = (u.departments || [])[0];
+        const deptSel = document.createElement("select");
+        deptSel.style.marginRight = "6px";
+        deptSel.style.maxWidth = "170px";
+        fillDeptSelect(deptSel, "Assign department", current ? current.id : null);
+        deptSel.onchange = async () => {
+          if (!deptSel.value) return;
+          try {
+            await API.patch("/users/" + u.id, { department_id: Number(deptSel.value) });
+            UI.showSuccess(msg, "Department updated for " + u.username);
+            load();
+          } catch (e) { UI.showError(msg, e.message); }
+        };
+        actions.appendChild(deptSel);
+
         const toggle = UI.el("button", { class: "btn btn-sm btn-muted" }, u.is_active ? "Deactivate" : "Activate");
         toggle.onclick = async () => {
           try { await API.patch("/users/" + u.id, { is_active: !u.is_active }); load(); }
@@ -75,11 +124,13 @@
         };
         actions.appendChild(toggle);
 
+        const deptText = (u.departments || []).map(d => d.name).join(", ") || "-";
         const approvalBadge = u.is_approved ? UI.badge("approved", "success") : UI.badge("pending", "warn");
         tbody.appendChild(UI.el("tr", null,
           UI.el("td", null, String(u.id)),
           UI.el("td", null, u.username),
           UI.el("td", null, u.full_name),
+          UI.el("td", null, deptText),
           UI.el("td", null, UI.roleTag(u.role)),
           UI.el("td", null, approvalBadge),
           UI.el("td", null, UI.badge(u.is_active ? "active" : "inactive", u.is_active ? "success" : "muted")),
@@ -90,25 +141,31 @@
     } catch (e) { UI.showError(msg, e.message); }
   }
 
+  document.getElementById("u_role").addEventListener("change", syncCreateDept);
+
   document.getElementById("createForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     msg.innerHTML = "";
     const btn = document.getElementById("createBtn"); btn.disabled = true;
+    const dept = document.getElementById("u_dept").value;
     try {
       await API.post("/users", {
         username: document.getElementById("u_username").value.trim(),
         email: document.getElementById("u_email").value.trim(),
         full_name: document.getElementById("u_fullname").value.trim(),
         role: document.getElementById("u_role").value,
-        password: document.getElementById("u_password").value
+        password: document.getElementById("u_password").value,
+        department_id: dept ? Number(dept) : null
       });
       UI.showSuccess(msg, "User created");
       e.target.reset();
+      syncCreateDept();
       load();
     } catch (err) { UI.showError(msg, err.message); }
     finally { btn.disabled = false; }
   });
 
+  try { await loadDepts(); } catch (e) { UI.showError(msg, e.message); }
   load();
   if (window.lucide) window.lucide.createIcons();
 })();

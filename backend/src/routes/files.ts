@@ -6,12 +6,22 @@ import { uploadToBucket, downloadFromBucket, deleteFromBucket } from "../utils/s
 import { writeAudit } from "../utils/audit.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
+import { getUserDepartmentIds, resolveDepartment } from "../utils/departments.js";
 import type { ResearchFile } from "../types/index.js";
 
 export const filesRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
-// POST /api/files — upload + encrypt (researcher + admin)
+type FileRow = ResearchFile & { iv: string; auth_tag: string; department_id: number | string | null };
+
+// admin: everything. others: files in their departments (files with no department stay owner-only).
+function canAccess(role: string, userId: number, deptIds: number[], f: FileRow): boolean {
+  if (role === "admin") return true;
+  if (f.department_id !== null && f.department_id !== undefined) return deptIds.includes(Number(f.department_id));
+  return Number(f.owner_id) === userId;
+}
+
+// POST /api/files - upload + encrypt (researcher + admin), stamped with a department
 filesRouter.post(
   "/",
   authenticate,
@@ -20,10 +30,11 @@ filesRouter.post(
   async (req: Request, res: Response) => {
     const user = req.user!;
     const file = req.file;
-    const { title, project_code, description } = (req.body ?? {}) as {
+    const { title, project_code, description, department_id } = (req.body ?? {}) as {
       title?: string;
       project_code?: string;
       description?: string;
+      department_id?: string;
     };
     const ip = req.ip;
     const ua = req.headers["user-agent"];
@@ -34,6 +45,12 @@ filesRouter.post(
     }
     if (!title || !project_code) {
       res.status(400).json({ ok: false, error: "title and project_code required" });
+      return;
+    }
+
+    const dept = await resolveDepartment(user, department_id);
+    if (!dept.ok) {
+      res.status(dept.status).json({ ok: false, error: dept.error });
       return;
     }
 
@@ -52,9 +69,9 @@ filesRouter.post(
 
     const { rows } = await query<ResearchFile>(
       `INSERT INTO research_files
-        (owner_id, title, project_code, description, original_name, mime_type, size_bytes, storage_path, checksum_sha256, iv, auth_tag)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-       RETURNING id, owner_id, title, project_code, description, original_name, mime_type, size_bytes, storage_path, checksum_sha256, is_deleted, created_at, updated_at`,
+        (owner_id, title, project_code, description, original_name, mime_type, size_bytes, storage_path, checksum_sha256, iv, auth_tag, department_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       RETURNING id, owner_id, department_id, title, project_code, description, original_name, mime_type, size_bytes, storage_path, checksum_sha256, is_deleted, created_at, updated_at`,
       [
         user.id,
         title,
@@ -67,6 +84,7 @@ filesRouter.post(
         checksum,
         enc.iv,
         enc.authTag,
+        dept.departmentId,
       ]
     );
 
@@ -84,35 +102,43 @@ filesRouter.post(
       status: "success",
       ip,
       userAgent: ua,
-      details: { title, project_code, size: original.length, checksum },
+      details: { title, project_code, size: original.length, checksum, department_id: dept.departmentId },
     });
 
     res.status(201).json({ ok: true, file: created });
   }
 );
 
-// GET /api/files — role-filtered list
+// GET /api/files - department-filtered list
 filesRouter.get("/", authenticate, async (req: Request, res: Response) => {
   const user = req.user!;
   const ip = req.ip;
   const ua = req.headers["user-agent"];
 
-  let sql = "SELECT * FROM research_files WHERE is_deleted = FALSE";
+  let sql =
+    `SELECT f.id, f.owner_id, f.department_id, f.title, f.project_code, f.description, f.original_name,
+            f.mime_type, f.size_bytes, f.checksum_sha256, f.is_deleted, f.created_at, f.updated_at,
+            d.name AS department_name, u.username AS owner_username
+     FROM research_files f
+     LEFT JOIN departments d ON d.id = f.department_id
+     LEFT JOIN users u ON u.id = f.owner_id
+     WHERE f.is_deleted = FALSE`;
   const params: unknown[] = [];
 
   if (user.role !== "admin") {
-    sql += " AND owner_id = $1";
-    params.push(user.id);
+    const deptIds = await getUserDepartmentIds(user.id);
+    sql += " AND ((f.department_id IS NULL AND f.owner_id = $1) OR f.department_id = ANY($2::bigint[]))";
+    params.push(user.id, deptIds);
   }
-  sql += " ORDER BY created_at DESC LIMIT 200";
+  sql += " ORDER BY f.created_at DESC LIMIT 200";
 
-  const { rows } = await query<ResearchFile & { owner_username?: string }>(sql, params);
+  const { rows } = await query(sql, params);
 
   await writeAudit({ userId: user.id, username: user.username, action: "file_listed", resourceType: "file", status: "success", ip, userAgent: ua, details: { count: rows.length, role: user.role } });
   res.json({ ok: true, files: rows });
 });
 
-// GET /api/files/:id/download — authz + decrypt
+// GET /api/files/:id/download - authz + decrypt
 filesRouter.get("/:id/download", authenticate, async (req: Request, res: Response) => {
   const user = req.user!;
   const id = Number(req.params.id);
@@ -124,7 +150,7 @@ filesRouter.get("/:id/download", authenticate, async (req: Request, res: Respons
     return;
   }
 
-  const { rows } = await query<ResearchFile & { iv: string; auth_tag: string }>(
+  const { rows } = await query<FileRow>(
     "SELECT * FROM research_files WHERE id = $1 AND is_deleted = FALSE",
     [id]
   );
@@ -133,7 +159,8 @@ filesRouter.get("/:id/download", authenticate, async (req: Request, res: Respons
     res.status(404).json({ ok: false, error: "File not found" });
     return;
   }
-  if (user.role !== "admin" && f.owner_id !== user.id) {
+  const deptIds = user.role === "admin" ? [] : await getUserDepartmentIds(user.id);
+  if (!canAccess(user.role, user.id, deptIds, f)) {
     await writeAudit({ userId: user.id, username: user.username, action: "file_downloaded", resourceType: "file", resourceId: id, status: "failure", ip, userAgent: ua, details: { reason: "forbidden" } });
     res.status(403).json({ ok: false, error: "Forbidden" });
     return;
@@ -166,7 +193,7 @@ filesRouter.get("/:id/download", authenticate, async (req: Request, res: Respons
   }
 });
 
-// DELETE /api/files/:id — soft delete (owner or admin)
+// DELETE /api/files/:id - soft delete (owner or admin)
 filesRouter.delete("/:id", authenticate, async (req: Request, res: Response) => {
   const user = req.user!;
   const id = Number(req.params.id);
@@ -184,7 +211,7 @@ filesRouter.delete("/:id", authenticate, async (req: Request, res: Response) => 
     res.status(404).json({ ok: false, error: "File not found" });
     return;
   }
-  if (user.role !== "admin" && f.owner_id !== user.id) {
+  if (user.role !== "admin" && Number(f.owner_id) !== user.id) {
     res.status(403).json({ ok: false, error: "Forbidden" });
     return;
   }

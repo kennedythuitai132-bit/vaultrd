@@ -84,11 +84,6 @@ function buildSidebar(user) {
       UI.el("span", { class: "sb-brand-name" }, "VaultRD")
     ),
     navEl,
-    UI.el("div", { class: "sb-upgrade" },
-      UI.el("h4", null, UI.el("i", { "data-lucide": "sparkles" }), "Upgrade to Pro"),
-      UI.el("p", null, "Unlock advanced features"),
-      UI.el("button", null, "Upgrade →")
-    )
   );
 }
 

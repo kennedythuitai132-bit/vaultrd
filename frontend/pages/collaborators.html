@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Collaborators — VaultRD</title>
+<title>Collaborators - VaultRD</title>
 <link rel="stylesheet" href="/assets/style.css">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 </head><body>
@@ -38,8 +38,10 @@
   summary.appendChild(makeKpi("shield-check", "purple", "Admins", "colAdmins"));
   content.appendChild(summary);
 
+  const isAdmin = user.role === "admin";
+
   // Invite panel (admin only)
-  if (user.role === "admin") {
+  if (isAdmin) {
     const formPanel = UI.el("div", { class: "panel", style: "margin-bottom:20px" });
     formPanel.appendChild(UI.el("div", { class: "panel-head" }, UI.el("h3", null, "Add collaborator")));
     const form = UI.el("form", { id: "colForm", style: "display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px" });
@@ -53,6 +55,7 @@
           <option value="admin">Admin</option>
         </select>
       </div>
+      <div style="grid-column:1/-1"><label>Department</label><select id="c_dept" required></select></div>
       <div style="grid-column:1/-1"><label>Full name</label><input id="c_fullname" required></div>
       <div style="grid-column:1/-1"><label>Password</label><input id="c_password" type="password" minlength="8" required placeholder="Min 8 chars"></div>
       <div style="grid-column:1/-1"><button type="submit" class="btn">Create collaborator account</button></div>
@@ -68,12 +71,38 @@
   listPanel.appendChild(UI.el("table", null,
     UI.el("thead", null, UI.el("tr", null,
       UI.el("th", null, "Username"), UI.el("th", null, "Full name"),
+      UI.el("th", null, "Department"),
       UI.el("th", null, "Role"), UI.el("th", null, "Status"),
       UI.el("th", null, "Last login")
     )),
     tbody
   ));
   content.appendChild(listPanel);
+
+  function syncDept() {
+    const sel = document.getElementById("c_dept");
+    const role = document.getElementById("c_role").value;
+    sel.required = role !== "admin";
+    if (sel.options.length) sel.options[0].textContent = role === "admin" ? "No department (optional)" : "Select department";
+  }
+
+  async function loadDepts() {
+    if (!isAdmin) return;
+    const sel = document.getElementById("c_dept");
+    const r = await API.get("/departments");
+    sel.innerHTML = "";
+    const ph = document.createElement("option");
+    ph.value = ""; ph.textContent = "Select department";
+    sel.appendChild(ph);
+    for (const d of r.departments) {
+      const o = document.createElement("option");
+      o.value = String(d.id);
+      o.textContent = d.name + (d.code ? " (" + d.code + ")" : "");
+      sel.appendChild(o);
+    }
+    if (!r.departments.length) UI.showError(msg, "Create a department first (Departments page) before adding collaborators.");
+    syncDept();
+  }
 
   async function load() {
     try {
@@ -83,25 +112,29 @@
       document.getElementById("colActive").textContent = r.users.filter(u => u.is_active).length;
       document.getElementById("colAdmins").textContent = r.users.filter(u => u.role === "admin").length;
       if (!r.users.length) {
-        tbody.appendChild(UI.el("tr", null, UI.el("td", { colspan: 5, style: "text-align:center;color:#94a3b8;padding:32px" }, "No collaborators yet.")));
+        tbody.appendChild(UI.el("tr", null, UI.el("td", { colspan: 6, style: "text-align:center;color:#94a3b8;padding:32px" }, "No collaborators yet.")));
       } else {
         for (const u of r.users) {
+          const deptText = (u.departments || []).map(d => d.name).join(", ") || "-";
           tbody.appendChild(UI.el("tr", null,
             UI.el("td", null, u.username),
             UI.el("td", null, u.full_name),
+            UI.el("td", null, deptText),
             UI.el("td", null, UI.roleTag(u.role)),
             UI.el("td", null, UI.badge(u.is_active ? "active" : "inactive", u.is_active ? "success" : "muted")),
             UI.el("td", null, UI.fmtDate(u.last_login_at))
           ));
         }
       }
-    } catch (e) { msg.innerHTML = '<div class="alert-box error">' + e.message + '</div>'; }
+    } catch (e) { UI.showError(msg, e.message); }
   }
 
-  if (user.role === "admin") {
+  if (isAdmin) {
+    document.getElementById("c_role").addEventListener("change", syncDept);
     document.getElementById("colForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       msg.innerHTML = "";
+      const dept = document.getElementById("c_dept").value;
       try {
         await API.post("/users", {
           username: document.getElementById("c_username").value.trim(),
@@ -109,11 +142,15 @@
           full_name: document.getElementById("c_fullname").value.trim(),
           role: document.getElementById("c_role").value,
           password: document.getElementById("c_password").value,
+          department_id: dept ? Number(dept) : null,
         });
         e.target.reset();
+        syncDept();
+        UI.showSuccess(msg, "Collaborator created");
         load();
-      } catch (err) { msg.innerHTML = '<div class="alert-box error">' + err.message + '</div>'; }
+      } catch (err) { UI.showError(msg, err.message); }
     });
+    try { await loadDepts(); } catch (e) { UI.showError(msg, e.message); }
   }
 
   load();
