@@ -57,6 +57,7 @@ departmentsRouter.post("/", authenticate, requireRole("admin"), async (req: Requ
       [name, code, headId, description || null]
     );
     const dept = rows[0];
+    if (!dept) { res.status(500).json({ ok: false, error: "Failed to create department" }); return; }
     await query(
       "INSERT INTO user_departments (user_id, department_id) VALUES ($1,$2) ON CONFLICT DO NOTHING",
       [headId, dept.id]
